@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Unisonic Hockey Game</title>
+  <style>
+    canvas {
+      background: black;
+      display: block;
+      margin: 0 auto;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas" width="1200" height="900"></canvas>
+  <script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+
+    const paddleWidth = 16, paddleHeight = 100, puckSize = 14;
+    let leftPaddleY = 270;
+    let rightPaddleY = 270;
+    let puckX = 395, puckY = 295;
+    let puckSpeedX = 6, puckSpeedY = 3;
+
+    let leftScore = 0, rightScore = 0;
+    let gameState = 'menu';
+
+    const goalTop = (canvas.height / 2) - 157.5;
+    const goalBottom = (canvas.height / 2) + 157.5;
+
+    const heldKeys = new Set();
+
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    function playBeep(frequency = 440, duration = 100) {
+      const oscillator = audioCtx.createOscillator();
+      const gainNode = audioCtx.createGain();
+      oscillator.type = 'square';
+      oscillator.frequency.setValueAtTime(frequency, audioCtx.currentTime);
+      gainNode.gain.setValueAtTime(0.2, audioCtx.currentTime);
+      oscillator.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+      oscillator.start();
+      oscillator.stop(audioCtx.currentTime + duration / 1000);
+    }
+
+    function drawRect(x, y, w, h) {
+      ctx.fillStyle = "white";
+      ctx.fillRect(x, y, w, h);
+    }
+
+    function drawScore() {
+      ctx.font = "100px Arial";
+      ctx.fillStyle = "white";
+      ctx.textAlign = "left";
+      ctx.fillText(leftScore, canvas.width / 4, 100);
+      ctx.textAlign = "right";
+      ctx.fillText(rightScore, canvas.width * 3 / 4, 100);
+    }
+
+    function drawBordersAndGoals() {
+      ctx.strokeStyle = "white";
+      ctx.lineWidth = 12;
+      ctx.setLineDash([6, 4]);
+      ctx.beginPath();
+      ctx.moveTo(10, 0);
+      ctx.lineTo(canvas.width - 10, 0);
+      ctx.moveTo(10, canvas.height);
+      ctx.lineTo(canvas.width - 10, canvas.height);
+      ctx.moveTo(0, 0);
+      ctx.lineTo(0, goalTop);
+      ctx.moveTo(0, goalBottom);
+      ctx.lineTo(0, canvas.height);
+      ctx.moveTo(canvas.width, 0);
+      ctx.lineTo(canvas.width, goalTop);
+      ctx.moveTo(canvas.width, goalBottom);
+      ctx.lineTo(canvas.width, canvas.height);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    function drawGoals() {
+      ctx.fillStyle = "black";
+      ctx.fillRect(0, goalTop, 10, goalBottom - goalTop);
+      ctx.fillRect(canvas.width - 10, goalTop, 10, goalBottom - goalTop);
+    }
+
+    function drawMenu(text) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.font = "40px Arial";
+      ctx.fillStyle = "white";
+      ctx.textAlign = "center";
+      ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+      ctx.font = "20px Arial";
+      ctx.fillText("(Click anywhere to enable controls)", canvas.width / 2, canvas.height / 2 + 30);
+      ctx.fillText("Controls:", canvas.width / 2, canvas.height / 2 + 60);
+      ctx.fillText("W/S = Left Player Up/Down", canvas.width / 2, canvas.height / 2 + 90);
+      ctx.fillText("Arrow Up/Down = Right Player Up/Down", canvas.width / 2, canvas.height / 2 + 120);
+      ctx.fillText("G = Start | R = Replay | Q = Quit", canvas.width / 2, canvas.height / 2 + 150);
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      drawScore();
+      drawBordersAndGoals();
+      drawGoals();
+
+      for (let y = 0; y < canvas.height; y += 20) {
+        drawRect(canvas.width / 2 - 2, y, 4, 10);
+      }
+
+      drawRect(20, leftPaddleY, paddleWidth, paddleHeight);
+      drawRect(750, leftPaddleY, paddleWidth, paddleHeight); // Left Offensive
+      drawRect(1170, rightPaddleY, paddleWidth, paddleHeight);
+      drawRect(450, rightPaddleY, paddleWidth, paddleHeight); // Right Offensive
+
+      if (gameState !== 'serving') drawRect(puckX, puckY, puckSize, puckSize);
+    }
+
+    function updatePaddles() {
+      if (heldKeys.has('w')) leftPaddleY -= 10.08;
+      if (heldKeys.has('s')) leftPaddleY += 10.08;
+      if (heldKeys.has('ArrowUp')) rightPaddleY -= 10.08;
+      if (heldKeys.has('ArrowDown')) rightPaddleY += 10.08;
+    }
+
+    let serveTimeout = null;
+
+    function servePuck(fromRight) {
+      const serveDirection = fromRight ? -1 : 1;
+      puckX = fromRight ? canvas.width - 40 : 30 + Math.random() * 20;
+      puckY = goalTop + 20 + Math.random() * (goalBottom - goalTop - 40);
+      let angle = (Math.random() - 0.5) * 6;
+      puckSpeedX = serveDirection * 9;
+      puckSpeedY = angle;
+    }
+
+    function update() {
+      // Ensure paddles stay within bounds
+      leftPaddleY = Math.max(0, Math.min(canvas.height - paddleHeight, leftPaddleY));
+      rightPaddleY = Math.max(0, Math.min(canvas.height - paddleHeight, rightPaddleY));
+      updatePaddles();
+
+      puckX += puckSpeedX;
+      puckY += puckSpeedY;
+
+      if (gameState !== 'serving') {
+        // Offensive paddle logic with passthrough deflection
+        const offensiveLeftPaddleX = 750;
+        const offensiveRightPaddleX = 450; // Right Offensive
+
+        if (
+          puckX <= offensiveLeftPaddleX + paddleWidth &&
+          puckX + puckSize >= offensiveLeftPaddleX &&
+          puckY + puckSize >= leftPaddleY &&
+          puckY <= leftPaddleY + paddleHeight
+        ) {
+          let hitPos = (puckY + puckSize / 2 - (leftPaddleY + paddleHeight / 2)) / (paddleHeight / 2);
+          if (puckSpeedX < 0) {
+            puckSpeedX = Math.abs(puckSpeedX);
+          }
+          puckSpeedY = hitPos * 5;
+          playBeep(600);
+        }
+
+        if (
+          puckX + puckSize >= offensiveRightPaddleX &&
+          puckX <= offensiveRightPaddleX + paddleWidth &&
+          puckY + puckSize >= rightPaddleY &&
+          puckY <= rightPaddleY + paddleHeight
+        ) {
+          let hitPos = (puckY + puckSize / 2 - (rightPaddleY + paddleHeight / 2)) / (paddleHeight / 2);
+          if (puckSpeedX > 0) {
+            puckSpeedX = -Math.abs(puckSpeedX);
+          }
+          puckSpeedY = hitPos * 5;
+          playBeep(600);
+        }
+        // Defensive paddle collision detection
+        const leftPaddleX = 20;
+        const rightPaddleX = 1170;
+
+        if (
+          puckX <= leftPaddleX + paddleWidth &&
+          puckX + puckSize >= leftPaddleX &&
+          puckY + puckSize >= leftPaddleY &&
+          puckY <= leftPaddleY + paddleHeight
+        ) {
+          puckSpeedX = Math.abs(puckSpeedX);
+          playBeep(600);
+        }
+
+        if (
+          puckX + puckSize >= rightPaddleX &&
+          puckX <= rightPaddleX + paddleWidth &&
+          puckY + puckSize >= rightPaddleY &&
+          puckY <= rightPaddleY + paddleHeight
+        ) {
+          puckSpeedX = -Math.abs(puckSpeedX);
+          playBeep(600);
+        }
+        if (puckX <= 10 && puckY >= goalTop && puckY + puckSize <= goalBottom) {
+          rightScore++;
+          playBeep(900);
+          gameState = 'serving';
+          clearTimeout(serveTimeout);
+          puckSpeedX = 0;
+          puckSpeedY = 0;
+          serveTimeout = setTimeout(() => {
+          // Check win condition before resuming play
+          if ((leftScore >= 9 || rightScore >= 9) && Math.abs(leftScore - rightScore) >= 2) {
+            gameState = 'gameover';
+            return;
+          }
+          gameState = 'playing';
+            servePuck(true); // right player serves from right side
+          }, 2000);
+        } else if (puckX + puckSize >= canvas.width - 10 && puckY >= goalTop && puckY + puckSize <= goalBottom) {
+          leftScore++;
+          playBeep(900);
+          gameState = 'serving';
+          clearTimeout(serveTimeout);
+          puckSpeedX = 0;
+          puckSpeedY = 0;
+          serveTimeout = setTimeout(() => {
+            gameState = 'playing';
+            servePuck(false); // left player serves from left side
+          }, 2000);
+        }
+      }
+
+      if ((puckX <= 10 && (puckY < goalTop || puckY + puckSize > goalBottom)) ||
+          (puckX + puckSize >= canvas.width - 10 && (puckY < goalTop || puckY + puckSize > goalBottom))) {
+        puckSpeedX *= -1;
+        playBeep(300);
+      }
+
+      if (puckY <= 10 || puckY + puckSize >= canvas.height - 10) {
+        puckSpeedY *= -1;
+        playBeep(500);
+      }
+    }
+
+    function gameLoop() {
+      if (gameState === 'menu') {
+        drawMenu('Press "G" to Start');
+        return;
+      } else if (gameState === 'gameover') {
+        drawMenu(`Game Over! ${leftScore > rightScore ? 'Left' : 'Right'} Wins! Press "R" to Replay or "Q" to Quit`);
+        return;
+      }
+
+      update();
+      draw();
+    }
+
+    setInterval(gameLoop, 1000 / 60);
+
+    document.addEventListener("keydown", (e) => {
+      heldKeys.add(e.key);
+
+      if (gameState === 'menu' && e.key.toLowerCase() === 'g') {
+        gameState = 'playing';
+        leftScore = 0;
+        rightScore = 0;
+        puckX = 395;
+        puckY = 295;
+      } else if (gameState === 'gameover') {
+        if (e.key.toLowerCase() === 'r') {
+          gameState = 'playing';
+          leftScore = 0;
+          rightScore = 0;
+          puckX = 395;
+          puckY = 295;
+        } else if (e.key.toLowerCase() === 'q') {
+          drawMenu('Thanks for playing!');
+        }
+      }
+    });
+
+    document.addEventListener("keyup", (e) => {
+      heldKeys.delete(e.key);
+    });
+
+    canvas.addEventListener("mousedown", () => {
+      canvas.focus();
+    });
+  </script>
+</body>
+</html>
