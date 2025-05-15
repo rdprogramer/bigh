@@ -118,10 +118,10 @@
     }
 
     function updatePaddles() {
-      if (heldKeys.has('w')) leftPaddleY -= 10.08;
-      if (heldKeys.has('s')) leftPaddleY += 10.08;
-      if (heldKeys.has('ArrowUp')) rightPaddleY -= 10.08;
-      if (heldKeys.has('ArrowDown')) rightPaddleY += 10.08;
+      if (heldKeys.has('w')) leftPaddleY -= 20.08;
+      if (heldKeys.has('s')) leftPaddleY += 20.08;
+      if (heldKeys.has('ArrowUp')) rightPaddleY -= 20.08;
+      if (heldKeys.has('ArrowDown')) rightPaddleY += 20.08;
     }
 
     let serveTimeout = null;
