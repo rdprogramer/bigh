@@ -20,8 +20,13 @@
     const paddleWidth = 16, paddleHeight = 100, puckSize = 14;
     let leftPaddleY = 270;
     let rightPaddleY = 270;
+    let leftPaddleVel = 0;
+    let rightPaddleVel = 0;
+    const leftPaddleSpeed = 11.5;
+    const rightPaddleSpeed = 18.4;
+
     let puckX = 395, puckY = 295;
-    let puckSpeedX = 8, puckSpeedY = 4.5;
+    let puckSpeedX = 8.4, puckSpeedY = 4.725;
 
     let leftScore = 0, rightScore = 0;
     let gameState = 'menu';
@@ -118,10 +123,11 @@
     }
 
     function updatePaddles() {
-      if (heldKeys.has('w')) leftPaddleY -= 30.08;
-      if (heldKeys.has('s')) leftPaddleY += 30.08;
-      if (heldKeys.has('ArrowUp')) rightPaddleY -= 50.08;
-      if (heldKeys.has('ArrowDown')) rightPaddleY += 50.08;
+      leftPaddleY += leftPaddleVel;
+      rightPaddleY += rightPaddleVel;
+
+      leftPaddleY = Math.max(0, Math.min(canvas.height - paddleHeight, leftPaddleY));
+      rightPaddleY = Math.max(0, Math.min(canvas.height - paddleHeight, rightPaddleY));
     }
 
     let serveTimeout = null;
@@ -136,18 +142,14 @@
     }
 
     function update() {
-      // Ensure paddles stay within bounds
-      leftPaddleY = Math.max(0, Math.min(canvas.height - paddleHeight, leftPaddleY));
-      rightPaddleY = Math.max(0, Math.min(canvas.height - paddleHeight, rightPaddleY));
       updatePaddles();
 
       puckX += puckSpeedX;
       puckY += puckSpeedY;
 
       if (gameState !== 'serving') {
-        // Offensive paddle logic with passthrough deflection
         const offensiveLeftPaddleX = 750;
-        const offensiveRightPaddleX = 450; // Right Offensive
+        const offensiveRightPaddleX = 450;
 
         if (
           puckX <= offensiveLeftPaddleX + paddleWidth &&
@@ -156,9 +158,7 @@
           puckY <= leftPaddleY + paddleHeight
         ) {
           let hitPos = (puckY + puckSize / 2 - (leftPaddleY + paddleHeight / 2)) / (paddleHeight / 2);
-          if (puckSpeedX < 0) {
-            puckSpeedX = Math.abs(puckSpeedX);
-          }
+          if (puckSpeedX < 0) puckSpeedX = Math.abs(puckSpeedX);
           puckSpeedY = hitPos * 5;
           playBeep(600);
         }
@@ -170,13 +170,11 @@
           puckY <= rightPaddleY + paddleHeight
         ) {
           let hitPos = (puckY + puckSize / 2 - (rightPaddleY + paddleHeight / 2)) / (paddleHeight / 2);
-          if (puckSpeedX > 0) {
-            puckSpeedX = -Math.abs(puckSpeedX);
-          }
+          if (puckSpeedX > 0) puckSpeedX = -Math.abs(puckSpeedX);
           puckSpeedY = hitPos * 5;
           playBeep(600);
         }
-        // Defensive paddle collision detection
+
         const leftPaddleX = 20;
         const rightPaddleX = 1170;
 
@@ -199,6 +197,7 @@
           puckSpeedX = -Math.abs(puckSpeedX);
           playBeep(600);
         }
+
         if (puckX <= 10 && puckY >= goalTop && puckY + puckSize <= goalBottom) {
           rightScore++;
           playBeep(900);
@@ -207,13 +206,12 @@
           puckSpeedX = 0;
           puckSpeedY = 0;
           serveTimeout = setTimeout(() => {
-          // Check win condition before resuming play
-          if ((leftScore >= 9 || rightScore >= 9) && Math.abs(leftScore - rightScore) >= 2) {
-            gameState = 'gameover';
-            return;
-          }
-          gameState = 'playing';
-            servePuck(true); // right player serves from right side
+            if ((leftScore >= 9 || rightScore >= 9) && Math.abs(leftScore - rightScore) >= 2) {
+              gameState = 'gameover';
+              return;
+            }
+            gameState = 'playing';
+            servePuck(true);
           }, 2000);
         } else if (puckX + puckSize >= canvas.width - 10 && puckY >= goalTop && puckY + puckSize <= goalBottom) {
           leftScore++;
@@ -224,7 +222,7 @@
           puckSpeedY = 0;
           serveTimeout = setTimeout(() => {
             gameState = 'playing';
-            servePuck(false); // left player serves from left side
+            servePuck(false);
           }, 2000);
         }
       }
@@ -259,6 +257,11 @@
     document.addEventListener("keydown", (e) => {
       heldKeys.add(e.key);
 
+      if (e.key === 'w') leftPaddleVel = -leftPaddleSpeed;
+      if (e.key === 's') leftPaddleVel = leftPaddleSpeed;
+      if (e.key === 'ArrowUp') rightPaddleVel = -rightPaddleSpeed;
+      if (e.key === 'ArrowDown') rightPaddleVel = rightPaddleSpeed;
+
       if (gameState === 'menu' && e.key.toLowerCase() === 'g') {
         gameState = 'playing';
         leftScore = 0;
@@ -280,6 +283,9 @@
 
     document.addEventListener("keyup", (e) => {
       heldKeys.delete(e.key);
+
+      if (e.key === 'w' || e.key === 's') leftPaddleVel = 0;
+      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') rightPaddleVel = 0;
     });
 
     canvas.addEventListener("mousedown", () => {
